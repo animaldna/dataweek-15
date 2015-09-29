@@ -1,0 +1,17 @@
+{
+  "name": "dataweek-2015",
+  "version": "1.0.0",
+  "description": "Data parsing and ZingChart demos.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Chloe Boylan",
+  "license": "ISC",
+  "dependencies": {
+    "async": "^1.4.2",
+    "csv-parse": "^1.0.0",
+    "stream-transform": "^0.1.0",
+    "underscore": "^1.8.3"
+  }
+}

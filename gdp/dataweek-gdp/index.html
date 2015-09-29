@@ -1,0 +1,262 @@
+<html>
+    <head>
+        <script src="https://code.jquery.com/jquery-2.1.4.min.js"></script>
+        <script src="zingchart.min.js"></script>
+        <script src="charts.js"></script>
+        <link rel="stylesheet" type="text/css" href="style.css">
+    </head>
+    <body>
+        <div id="container">
+            <div class="sk-cube-grid">
+                <div class="sk-cube sk-cube1"></div>
+                <div class="sk-cube sk-cube2"></div>
+                <div class="sk-cube sk-cube3"></div>
+                <div class="sk-cube sk-cube4"></div>
+                <div class="sk-cube sk-cube5"></div>
+                <div class="sk-cube sk-cube6"></div>
+                <div class="sk-cube sk-cube7"></div>
+                <div class="sk-cube sk-cube8"></div>
+                <div class="sk-cube sk-cube9"></div>
+            </div>
+            <div id='percentChart'></div>
+            <div id='percentDrill'></div>
+            <div id='realChart'></div>
+            <div id='realDrill'></div>
+        </div>
+        <script>
+            var percentSeries;
+            var realSeries;
+            var drilldown = false; 
+            var percent = true;
+
+            zingchart.FASTWIDTH = true;
+
+            $.ajax('http://localhost:8888/dataweek-2015/gdp/dataweek-gdp/30percentSeries.json',{
+                async: false,
+                type: 'GET',
+                success: function(data){
+                    percentConfig.series = data;
+                    zingchart.render({
+                        id: 'percentChart',
+                        data: percentConfig,
+                        height: 1000,
+                        width: 1000,
+                        hideprogresslogo:true
+                    });
+                }
+            });
+
+            /* TOOLTIP FUNCTIONS */
+            window.percentTooltip = function (val) {
+                var newVal = (val * 100);
+                newVal = newVal.toFixed(3);
+                return ("<strong>%t</strong><br>%kv: " + newVal + "%");
+            }
+
+            window.realTooltip = function(val){
+                var newVal = 0;
+                if(val > 999000000000){
+                    newVal = val / 1000000000000;
+                    newVal = newVal.toFixed(1);
+                    return "<strong>%t</strong><br>%kv: $" + newVal + "T";
+                } else {
+                    newVal = val / 1000000000;
+                    newVal = newVal.toFixed(1);
+                    return "<strong>%t</strong><br>%kv: $" + newVal + "B";
+                }
+            }
+
+            /* SCALE VALUE FUNCTIONS */
+            window.percentScale = function(val){
+                var newVal = (val * 100).toFixed(2);
+                return newVal + "%";
+            }
+            window.realScale = function(val){
+                var newVal = 0;
+                if(val > 999000000000){
+                    newVal = val / 1000000000000;
+                    newVal = newVal.toFixed(1);
+                    return "$" + newVal + "T";
+                } else if (val > 999000000) {
+                    newVal = val / 1000000000;
+                    return "$" + newVal + "B";
+                } else {
+                    newVal = val.toFixed(2);
+                    return "$" + newVal + "B";
+                }
+            }
+
+            /* ZC renders for drilldown */
+            zingchart.render({
+                id: 'realDrill',
+                data: realDrillConfig,
+                hideprogresslogo:true,
+                height: 1000,
+                width: 1000
+            });
+            zingchart.render({
+                id: 'percentDrill',
+                data: percentDrillConfig,
+                hideprogresslogo:true,
+                height: 1000,
+                width: 1000
+            });
+
+            /* staggered load/render for second large chart */
+            zingchart.bind('percentChart','gload',function(){
+                //remove the animation
+                $('.sk-cube-grid').css('display','none');
+                //load the second dataset and render the chart in the background
+                $.ajax('http://localhost:8888/dataweek-2015/gdp/dataweek-gdp/30realSeries.json',{
+                    type: 'GET',
+                    //async: false,
+                    success: function(data){
+                        realConfig.series = data;
+                        zingchart.render({
+                            id: 'realChart',
+                            data: realConfig,
+                            hideprogresslogo:true,
+                            height: 1000,
+                            width: 1000
+                        });
+                    }
+                });
+            });
+
+            /* Adrian's plot hover solution */
+            var oFills = [], sHoverColor = '#ea4204';
+ 
+            zingchart.bind(null, 'plot_mouseover', function(p) {
+                var oPath = $('#' + p.graphid + '-plot-' + p.plotindex + '-bl-0-c path');
+                var oFill = oPath.attr('fill');
+                oFills[p.plotindex] = oFill;
+                oPath.attr('fill', sHoverColor);
+            });
+             
+            zingchart.bind(null, 'plot_mouseout', function(p) {
+                var oPath = $('#' + p.graphid + '-plot-' + p.plotindex + '-bl-0-c path');
+                oPath.attr('fill', oFills[p.plotindex]);
+            });
+            
+
+            /* Drilldown logic */
+            zingchart.plot_click = function(p) {
+                //ignore plot clicks on drilled down view
+                if(!drilldown){
+                    var newData = prepDrilldown(p);
+                    if(percent){
+                        percentDrillConfig.series = [newData];
+                        percentDrillConfig.shapes[4].label.text = newData.text;
+
+                        zingchart.exec('percentDrill','setdata',{
+                            data: percentDrillConfig
+                        });
+
+                        zingchart.bind('percentDrill','gcomplete',function(){
+                            $('#realChart,#percentChart,#realDrill').css('visibility','hidden');
+                            $('#percentDrill').css('visibility','initial');
+                        });
+                    } else {
+                        realDrillConfig.series = [newData];
+                        realDrillConfig.shapes[4].label.text = newData.text;
+                        
+                        zingchart.exec('realDrill','setdata',{
+                            data: realDrillConfig
+                        });
+
+                        zingchart.bind('realDrill','gcomplete',function(){
+                            $('#realChart,#percentChart,#percentDrill').css('visibility','hidden');
+                            $('#realDrill').css('visibility','initial');
+                        });
+                    }
+                    drilldown = true;
+                }
+            }
+
+            /* Button logic */
+            zingchart.shape_click = function(p){
+                switch(p.shapeid){
+                    case 'back_btn':
+                        if(percent){
+                            $('#realChart,#realDrill,#percentDrill').css('visibility','hidden');
+                            $('#percentChart').css('visibility','initial');
+                        } else {
+                            $('#percentChart,#realDrill,#percentDrill').css('visibility','hidden');
+                            $('#realChart').css('visibility','initial');
+                        }
+                        drilldown = false;
+                        break;
+
+                    case 'real_btn':
+                        //only if you're not in real view yet
+                        if(percent){
+                            if(drilldown){
+                                var plotInfo = zingchart.exec(p.id,'getobjectinfo',{
+                                    object: 'plot',
+                                    plotid: p.plotid
+                                });
+                                var newVals = zingchart.exec('realChart','getplotvalues',{
+                                    plotid: plotInfo.id
+                                });
+                                realDrillConfig.series = [{
+                                    values: newVals,
+                                    backgroundColor: plotInfo.backgroundColor1,
+                                    text: plotInfo.text,
+                                    id: plotInfo.id,
+                                    scales:"scale-x,scale-y,scale-y-2" 
+                                }];
+                                realDrillConfig.shapes[4].label.text = plotInfo.text;
+
+                                zingchart.exec('realDrill','setdata',{
+                                    data: realDrillConfig
+                                });
+                                zingchart.bind('realDrill','gcomplete',function(){
+                                    $('#realChart,#percentChart,#percentDrill').css('visibility','hidden');
+                                    $('#realDrill').css('visibility','initial');
+                                });
+                            } else {
+                                $('#percentChart').css('visibility','hidden');
+                                $('#realChart').css('visibility','initial');
+                            }
+                            percent = false;
+                        }
+                        break;
+
+                    case 'percent_btn':
+                        if(!percent){
+                            if(drilldown){
+                                var plotInfo = zingchart.exec(p.id,'getobjectinfo',{
+                                    object: 'plot',
+                                    plotid: p.plotid
+                                });
+                                var newVals = zingchart.exec('percentChart','getplotvalues',{
+                                    plotid: plotInfo.id
+                                });
+                                percentDrillConfig.series = [{
+                                    values: newVals,
+                                    backgroundColor: plotInfo.backgroundColor1,
+                                    text: plotInfo.text,
+                                    id: plotInfo.id,
+                                    scales:"scale-x,scale-y,scale-y-2" 
+                                }];
+                                percentDrillConfig.shapes[4].label.text = plotInfo.text;
+
+                                zingchart.exec('percentDrill','setdata',{
+                                    data: percentDrillConfig
+                                });
+                                zingchart.bind('percentDrill','gcomplete',function(){
+                                    $('#realChart,#percentChart,#realDrill').css('visibility','hidden');
+                                    $('#percentDrill').css('visibility','initial');
+                                });
+                            } else {
+                                $('#realChart').css('visibility','hidden');
+                                $('#percentChart').css('visibility','initial');
+                            }
+                            percent = true;
+                        }
+                        break;
+                }
+            }
+        </script>
+    </body>
+</html>
